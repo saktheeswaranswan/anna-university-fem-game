@@ -1,0 +1,268 @@
+// ————————————————————————————————————————————————
+// 10×10 Matrix Assembly with Arrow-Keys, Bullets & Highlights
+// ————————————————————————————————————————————————
+
+const DOF = 2;                                // ✅ Scalar: DOF per node
+let n_nodes;                                  // ✅ Scalar: total nodes
+let node_coords = [], elements = [];          // 📌 Vectors: node positions & element connectivity
+let K_global;                                 // 🧮 Matrix: global stiffness
+let nodeSprites = [], projectiles = [];       // 📌 Vectors: nodes & bullets
+let highlightCells = [];                      // 📌 Vector of {r,c} to highlight
+let carriageX = 250;                          // ✅ Scalar: gun X position
+
+function setup() {
+  createCanvas(900, 450);                     // create canvas :contentReference[oaicite:5]{index=5}
+  // build 5×5 grid => 25 nodes => 2*n_nodes=50 DOF, but display only top-left 10×10
+  const cols=5, rows=5;
+  n_nodes = cols * rows;
+  for(let y=0; y<rows; y++){
+    for(let x=0; x<cols; x++){
+      let px=80 + x*60, py=50 + y*60;
+      node_coords.push([px,py]);
+      nodeSprites.push({x:px, y:py, idx: node_coords.length-1});
+    }
+  }
+  // each square → two triangles (total 2*(cols-1)*(rows-1)=32 elements)
+  for(let y=0; y<rows-1; y++){
+    for(let x=0; x<cols-1; x++){
+      let n1=y*cols+x, n2=n1+1, n3=n1+cols, n4=n3+1;
+      elements.push([n1,n2,n3], [n2,n4,n3]);
+    }
+  }
+  // initialize 2n×2n global matrix to zero
+  K_global = Array(2*n_nodes).fill().map(_=>Array(2*n_nodes).fill(0));
+}
+
+function draw() {
+  background(30);
+  
+  // draw nodes
+  fill(200); noStroke();
+  nodeSprites.forEach(n => ellipse(n.x, n.y, 8));              
+  
+  // draw carriage at carriageX :contentReference[oaicite:6]{index=6}
+  push();
+    translate(carriageX, 380);
+    fill(80); stroke(180);
+    rect(-40,0,80,20);
+    rect(-20,-30,40,30);
+    for(let i=0;i<4;i++) rect(-20+i*10,-50,6,35);
+  pop();
+  
+  // update & draw bullets
+  projectiles.forEach(p => {
+    if(!p.stuck){
+      p.x += p.vx; p.y += p.vy;
+      if(dist(p.x,p.y, p.tx,p.ty) < 5){              // collision check :contentReference[oaicite:7]{index=7}
+        p.stuck = true; p.vx = p.vy = 0;
+        assembleNode(p.nIdx);
+      }
+    }
+    fill(p.stuck ? [255,100,0] : [255,200,0]);
+    noStroke(); ellipse(p.x,p.y,8);
+  });
+  
+  // draw 10×10 block of K_global with highlights
+  drawMatrix();
+}
+
+function keyPressed() {
+  if(keyCode === LEFT_ARROW)  carriageX = max(80, carriageX - 10);  // move gun left :contentReference[oaicite:8]{index=8}
+  if(keyCode === RIGHT_ARROW) carriageX = min(420, carriageX + 10); // move gun right :contentReference[oaicite:9]{index=9}
+}
+
+// fire bullets at all nodes
+function mousePressed() {
+  projectiles = [];
+  nodeSprites.forEach(n => {
+    let angle = atan2(n.y-380, n.x-carriageX);
+    projectiles.push({ x:carriageX, y:380, vx:5*cos(angle), vy:5*sin(angle),
+                       tx:n.x, ty:n.y, nIdx:n.idx, stuck:false });
+  });
+}
+
+// assemble contributions for all elements touching node n
+function assembleNode(n){
+  highlightCells = [];  // reset highlights
+  elements.forEach((el, ei) => {
+    if(el.includes(n)){
+      // dummy ke: (ei+1)*0.1 matrix
+      let ke = Array(6).fill().map(_=>Array(6).fill((ei+1)*0.1));
+      let I = [];
+      el.forEach(nd => I.push(2*nd, 2*nd+1));   // global DOF indices
+      for(let i=0;i<6;i++) for(let j=0;j<6;j++){
+        let r = I[i], c = I[j];
+        K_global[r][c] += ke[i][j];
+        highlightCells.push({r,c});             // mark for highlight
+      }
+    }
+  });
+}
+
+// render top-left 10×10 of K_global, highlighting recent updates
+function drawMatrix(){
+  const offX=500, offY=50, cell=18;
+  textSize(10); textAlign(RIGHT, CENTER);      // text align :contentReference[oaicite:10]{index=10}
+  for(let r=0; r<10; r++){
+    for(let c=0; c<10; c++){
+      // highlight if in highlightCells
+      if(highlightCells.some(h=>h.r===r && h.c===c)){
+        fill(50,150,50); rect(offX+c*cell-14, offY+r*cell-10, cell, cell);
+      }
+      fill(255);
+      let v = K_global[r][c].toFixed(1);
+      text(v, offX + c*cell, offY + r*cell);
+    }
+  }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+// ————————————————————————————————————————————————
+// 10×10 Matrix Assembly with Arrow-Keys, Bullets & Highlights
+// ————————————————————————————————————————————————
+
+const DOF = 2;                                // ✅ Scalar: DOF per node
+let n_nodes;                                  // ✅ Scalar: total nodes
+let node_coords = [], elements = [];          // 📌 Vectors: node positions & element connectivity
+let K_global;                                 // 🧮 Matrix: global stiffness
+let nodeSprites = [], projectiles = [];       // 📌 Vectors: nodes & bullets
+let highlightCells = [];                      // 📌 Vector of {r,c} to highlight
+let carriageX = 250;                          // ✅ Scalar: gun X position
+
+function setup() {
+  createCanvas(900, 450);                     // create canvas :contentReference[oaicite:5]{index=5}
+  // build 5×5 grid => 25 nodes => 2*n_nodes=50 DOF, but display only top-left 10×10
+  const cols=5, rows=5;
+  n_nodes = cols * rows;
+  for(let y=0; y<rows; y++){
+    for(let x=0; x<cols; x++){
+      let px=80 + x*60, py=50 + y*60;
+      node_coords.push([px,py]);
+      nodeSprites.push({x:px, y:py, idx: node_coords.length-1});
+    }
+  }
+  // each square → two triangles (total 2*(cols-1)*(rows-1)=32 elements)
+  for(let y=0; y<rows-1; y++){
+    for(let x=0; x<cols-1; x++){
+      let n1=y*cols+x, n2=n1+1, n3=n1+cols, n4=n3+1;
+      elements.push([n1,n2,n3], [n2,n4,n3]);
+    }
+  }
+  // initialize 2n×2n global matrix to zero
+  K_global = Array(2*n_nodes).fill().map(_=>Array(2*n_nodes).fill(0));
+}
+
+function draw() {
+  background(30);
+  
+  // draw nodes
+  fill(200); noStroke();
+  nodeSprites.forEach(n => ellipse(n.x, n.y, 8));              
+  
+  // draw carriage at carriageX :contentReference[oaicite:6]{index=6}
+  push();
+    translate(carriageX, 380);
+    fill(80); stroke(180);
+    rect(-40,0,80,20);
+    rect(-20,-30,40,30);
+    for(let i=0;i<4;i++) rect(-20+i*10,-50,6,35);
+  pop();
+  
+  // update & draw bullets
+  projectiles.forEach(p => {
+    if(!p.stuck){
+      p.x += p.vx; p.y += p.vy;
+      if(dist(p.x,p.y, p.tx,p.ty) < 5){              // collision check :contentReference[oaicite:7]{index=7}
+        p.stuck = true; p.vx = p.vy = 0;
+        assembleNode(p.nIdx);
+      }
+    }
+    fill(p.stuck ? [255,100,0] : [255,200,0]);
+    noStroke(); ellipse(p.x,p.y,8);
+  });
+  
+  // draw 10×10 block of K_global with highlights
+  drawMatrix();
+}
+
+function keyPressed() {
+  if(keyCode === LEFT_ARROW)  carriageX = max(80, carriageX - 10);  // move gun left :contentReference[oaicite:8]{index=8}
+  if(keyCode === RIGHT_ARROW) carriageX = min(420, carriageX + 10); // move gun right :contentReference[oaicite:9]{index=9}
+}
+
+// fire bullets at all nodes
+function mousePressed() {
+  projectiles = [];
+  nodeSprites.forEach(n => {
+    let angle = atan2(n.y-380, n.x-carriageX);
+    projectiles.push({ x:carriageX, y:380, vx:5*cos(angle), vy:5*sin(angle),
+                       tx:n.x, ty:n.y, nIdx:n.idx, stuck:false });
+  });
+}
+
+// assemble contributions for all elements touching node n
+function assembleNode(n){
+  highlightCells = [];  // reset highlights
+  elements.forEach((el, ei) => {
+    if(el.includes(n)){
+      // dummy ke: (ei+1)*0.1 matrix
+      let ke = Array(6).fill().map(_=>Array(6).fill((ei+1)*0.1));
+      let I = [];
+      el.forEach(nd => I.push(2*nd, 2*nd+1));   // global DOF indices
+      for(let i=0;i<6;i++) for(let j=0;j<6;j++){
+        let r = I[i], c = I[j];
+        K_global[r][c] += ke[i][j];
+        highlightCells.push({r,c});             // mark for highlight
+      }
+    }
+  });
+}
+
+// render top-left 10×10 of K_global, highlighting recent updates
+function drawMatrix(){
+  const offX=500, offY=50, cell=18;
+  textSize(10); textAlign(RIGHT, CENTER);      // text align :contentReference[oaicite:10]{index=10}
+  for(let r=0; r<10; r++){
+    for(let c=0; c<10; c++){
+      // highlight if in highlightCells
+      if(highlightCells.some(h=>h.r===r && h.c===c)){
+        fill(50,150,50); rect(offX+c*cell-14, offY+r*cell-10, cell, cell);
+      }
+      fill(255);
+      let v = K_global[r][c].toFixed(1);
+      text(v, offX + c*cell, offY + r*cell);
+    }
+  }
+}
+
+
