@@ -1,0 +1,1300 @@
+// ————————————————————————————————————————————————
+// Fire-at-Nodes & Assemble Global Stiffness Matrix
+// ————————————————————————————————————————————————
+
+const DOF = 2;           // degrees of freedom per node
+let n_nodes;             // total nodes
+let node_coords = [];    // 📌 list of [x,y]
+let elements = [];       // 📌 list of [n1,n2,n3]
+let nodeSprites = [];    // visual nodes
+let projectiles = [];    // shots at nodes
+let K_global;            // 🧮 global stiffness matrix
+
+function setup() {
+  createCanvas(900, 400);           // main drawing area :contentReference[oaicite:5]{index=5}
+  // build 5×4 grid of nodes
+  let cols=5, rows=4;
+  n_nodes = cols*rows;
+  for(let y=0; y<rows; y++){
+    for(let x=0; x<cols; x++){
+      let px=80+x*60, py=50+y*60;
+      node_coords.push([px,py]);
+      nodeSprites.push({x:px, y:py, idx: node_coords.length-1});
+    }
+  }
+  // split each square into 2 CST triangles (total 20 elements)
+  for(let y=0; y<rows-1; y++){
+    for(let x=0; x<cols-1; x++){
+      let n1=y*cols+x, n2=n1+1, n3=n1+cols, n4=n3+1;
+      elements.push([n1,n2,n3], [n2,n4,n3]);
+    }
+  }
+  // initialize K_global to zeros
+  K_global = Array(2*n_nodes).fill().map(_=>Array(2*n_nodes).fill(0));
+}
+
+function draw() {
+  background(30);
+  // draw nodes
+  fill(200); noStroke();
+  nodeSprites.forEach(n=>ellipse(n.x,n.y,8));  // draw node circles :contentReference[oaicite:6]{index=6}
+  
+  // draw machine-gun carriage
+  drawCarriage();
+
+  // update & draw projectiles
+  projectiles.forEach(p => {
+    p.x += p.vx; p.y += p.vy;
+    ellipse(p.x,p.y,6);
+    if (!p.done && dist(p.x,p.y,p.tx,p.ty)<5) {
+      assembleNode(p.nIdx);
+      p.done = true;
+    }
+  });
+
+  // display K_global matrix on right
+  drawMatrix();
+}
+
+function mousePressed() {
+  projectiles = [];
+  // fire one shot per node toward that node
+  nodeSprites.forEach(n=>{
+    let angle = atan2(n.y-350, n.x-250);
+    projectiles.push({
+      x:250, y:350,
+      vx:5*cos(angle), vy:5*sin(angle),
+      tx:n.x, ty:n.y,
+      nIdx: n.idx,
+      done:false
+    });
+  });
+}
+
+// draws a simple carriage
+function drawCarriage(){
+  push(); translate(250,350);
+  fill(80); stroke(180);
+  rect(-40,0,80,20);
+  rect(-20,-30,40,30);
+  for(let i=0;i<4;i++) rect(-20+i*10,-50,6,35);
+  pop();
+}
+
+// assemble all elements touching node n
+function assembleNode(n){
+  // find elements containing node n
+  elements.forEach((el,ei)=>{
+    if(el.includes(n)){
+      // dummy ke = 6×6 constant for demo
+      let ke = Array(6).fill().map(_=>Array(6).fill((ei+1)*0.2));
+      // map local DOFs to global
+      let I = [];
+      el.forEach(nd=>{
+        I.push(2*nd, 2*nd+1);
+      });
+      // assemble into K_global
+      for(let i=0;i<6;i++) for(let j=0;j<6;j++){
+        K_global[I[i]][I[j]] += ke[i][j];
+      }
+    }
+  });
+}
+
+// render K_global as text grid
+function drawMatrix(){
+  textSize(10);            // set font size :contentReference[oaicite:7]{index=7}
+  textAlign(RIGHT,CENTER);  // align numbers :contentReference[oaicite:8]{index=8}
+  fill(255);
+  let offX=500, offY=50, cell=15;
+  for(let r=0; r<2*n_nodes; r++){
+    for(let c=0; c<2*n_nodes; c++){
+      let v = K_global[r][c].toFixed(1);
+      text(v, offX + c*cell, offY + r*cell);
+    }
+  }
+}
+
+
+
+
+
+
+
+
+// ————————————————————————————————————————————————
+// 10×10 Matrix Assembly with Arrow-Keys, Bullets & Highlights
+// ————————————————————————————————————————————————
+
+const DOF = 2;                                // ✅ Scalar: DOF per node
+let n_nodes;                                  // ✅ Scalar: total nodes
+let node_coords = [], elements = [];          // 📌 Vectors: node positions & element connectivity
+let K_global;                                 // 🧮 Matrix: global stiffness
+let nodeSprites = [], projectiles = [];       // 📌 Vectors: nodes & bullets
+let highlightCells = [];                      // 📌 Vector of {r,c} to highlight
+let carriageX = 250;                          // ✅ Scalar: gun X position
+
+function setup() {
+  createCanvas(900, 450);                     // create canvas :contentReference[oaicite:5]{index=5}
+  // build 5×5 grid => 25 nodes => 2*n_nodes=50 DOF, but display only top-left 10×10
+  const cols=5, rows=5;
+  n_nodes = cols * rows;
+  for(let y=0; y<rows; y++){
+    for(let x=0; x<cols; x++){
+      let px=80 + x*60, py=50 + y*60;
+      node_coords.push([px,py]);
+      nodeSprites.push({x:px, y:py, idx: node_coords.length-1});
+    }
+  }
+  // each square → two triangles (total 2*(cols-1)*(rows-1)=32 elements)
+  for(let y=0; y<rows-1; y++){
+    for(let x=0; x<cols-1; x++){
+      let n1=y*cols+x, n2=n1+1, n3=n1+cols, n4=n3+1;
+      elements.push([n1,n2,n3], [n2,n4,n3]);
+    }
+  }
+  // initialize 2n×2n global matrix to zero
+  K_global = Array(2*n_nodes).fill().map(_=>Array(2*n_nodes).fill(0));
+}
+
+function draw() {
+  background(30);
+  
+  // draw nodes
+  fill(200); noStroke();
+  nodeSprites.forEach(n => ellipse(n.x, n.y, 8));              
+  
+  // draw carriage at carriageX :contentReference[oaicite:6]{index=6}
+  push();
+    translate(carriageX, 380);
+    fill(80); stroke(180);
+    rect(-40,0,80,20);
+    rect(-20,-30,40,30);
+    for(let i=0;i<4;i++) rect(-20+i*10,-50,6,35);
+  pop();
+  
+  // update & draw bullets
+  projectiles.forEach(p => {
+    if(!p.stuck){
+      p.x += p.vx; p.y += p.vy;
+      if(dist(p.x,p.y, p.tx,p.ty) < 5){              // collision check :contentReference[oaicite:7]{index=7}
+        p.stuck = true; p.vx = p.vy = 0;
+        assembleNode(p.nIdx);
+      }
+    }
+    fill(p.stuck ? [255,100,0] : [255,200,0]);
+    noStroke(); ellipse(p.x,p.y,8);
+  });
+  
+  // draw 10×10 block of K_global with highlights
+  drawMatrix();
+}
+
+function keyPressed() {
+  if(keyCode === LEFT_ARROW)  carriageX = max(80, carriageX - 10);  // move gun left :contentReference[oaicite:8]{index=8}
+  if(keyCode === RIGHT_ARROW) carriageX = min(420, carriageX + 10); // move gun right :contentReference[oaicite:9]{index=9}
+}
+
+// fire bullets at all nodes
+function mousePressed() {
+  projectiles = [];
+  nodeSprites.forEach(n => {
+    let angle = atan2(n.y-380, n.x-carriageX);
+    projectiles.push({ x:carriageX, y:380, vx:5*cos(angle), vy:5*sin(angle),
+                       tx:n.x, ty:n.y, nIdx:n.idx, stuck:false });
+  });
+}
+
+// assemble contributions for all elements touching node n
+function assembleNode(n){
+  highlightCells = [];  // reset highlights
+  elements.forEach((el, ei) => {
+    if(el.includes(n)){
+      // dummy ke: (ei+1)*0.1 matrix
+      let ke = Array(6).fill().map(_=>Array(6).fill((ei+1)*0.1));
+      let I = [];
+      el.forEach(nd => I.push(2*nd, 2*nd+1));   // global DOF indices
+      for(let i=0;i<6;i++) for(let j=0;j<6;j++){
+        let r = I[i], c = I[j];
+        K_global[r][c] += ke[i][j];
+        highlightCells.push({r,c});             // mark for highlight
+      }
+    }
+  });
+}
+
+// render top-left 10×10 of K_global, highlighting recent updates
+function drawMatrix(){
+  const offX=500, offY=50, cell=18;
+  textSize(10); textAlign(RIGHT, CENTER);      // text align :contentReference[oaicite:10]{index=10}
+  for(let r=0; r<10; r++){
+    for(let c=0; c<10; c++){
+      // highlight if in highlightCells
+      if(highlightCells.some(h=>h.r===r && h.c===c)){
+        fill(50,150,50); rect(offX+c*cell-14, offY+r*cell-10, cell, cell);
+      }
+      fill(255);
+      let v = K_global[r][c].toFixed(1);
+      text(v, offX + c*cell, offY + r*cell);
+    }
+  }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+// ————————————————————————————————————————————————
+// 10×10 Matrix Assembly with Arrow-Keys, Bullets & Highlights
+// ————————————————————————————————————————————————
+
+const DOF = 2;                                // ✅ Scalar: DOF per node
+let n_nodes;                                  // ✅ Scalar: total nodes
+let node_coords = [], elements = [];          // 📌 Vectors: node positions & element connectivity
+let K_global;                                 // 🧮 Matrix: global stiffness
+let nodeSprites = [], projectiles = [];       // 📌 Vectors: nodes & bullets
+let highlightCells = [];                      // 📌 Vector of {r,c} to highlight
+let carriageX = 250;                          // ✅ Scalar: gun X position
+
+function setup() {
+  createCanvas(900, 450);                     // create canvas :contentReference[oaicite:5]{index=5}
+  // build 5×5 grid => 25 nodes => 2*n_nodes=50 DOF, but display only top-left 10×10
+  const cols=5, rows=5;
+  n_nodes = cols * rows;
+  for(let y=0; y<rows; y++){
+    for(let x=0; x<cols; x++){
+      let px=80 + x*60, py=50 + y*60;
+      node_coords.push([px,py]);
+      nodeSprites.push({x:px, y:py, idx: node_coords.length-1});
+    }
+  }
+  // each square → two triangles (total 2*(cols-1)*(rows-1)=32 elements)
+  for(let y=0; y<rows-1; y++){
+    for(let x=0; x<cols-1; x++){
+      let n1=y*cols+x, n2=n1+1, n3=n1+cols, n4=n3+1;
+      elements.push([n1,n2,n3], [n2,n4,n3]);
+    }
+  }
+  // initialize 2n×2n global matrix to zero
+  K_global = Array(2*n_nodes).fill().map(_=>Array(2*n_nodes).fill(0));
+}
+
+function draw() {
+  background(30);
+  
+  // draw nodes
+  fill(200); noStroke();
+  nodeSprites.forEach(n => ellipse(n.x, n.y, 8));              
+  
+  // draw carriage at carriageX :contentReference[oaicite:6]{index=6}
+  push();
+    translate(carriageX, 380);
+    fill(80); stroke(180);
+    rect(-40,0,80,20);
+    rect(-20,-30,40,30);
+    for(let i=0;i<4;i++) rect(-20+i*10,-50,6,35);
+  pop();
+  
+  // update & draw bullets
+  projectiles.forEach(p => {
+    if(!p.stuck){
+      p.x += p.vx; p.y += p.vy;
+      if(dist(p.x,p.y, p.tx,p.ty) < 5){              // collision check :contentReference[oaicite:7]{index=7}
+        p.stuck = true; p.vx = p.vy = 0;
+        assembleNode(p.nIdx);
+      }
+    }
+    fill(p.stuck ? [255,100,0] : [255,200,0]);
+    noStroke(); ellipse(p.x,p.y,8);
+  });
+  
+  // draw 10×10 block of K_global with highlights
+  drawMatrix();
+}
+
+function keyPressed() {
+  if(keyCode === LEFT_ARROW)  carriageX = max(80, carriageX - 10);  // move gun left :contentReference[oaicite:8]{index=8}
+  if(keyCode === RIGHT_ARROW) carriageX = min(420, carriageX + 10); // move gun right :contentReference[oaicite:9]{index=9}
+}
+
+// fire bullets at all nodes
+function mousePressed() {
+  projectiles = [];
+  nodeSprites.forEach(n => {
+    let angle = atan2(n.y-380, n.x-carriageX);
+    projectiles.push({ x:carriageX, y:380, vx:5*cos(angle), vy:5*sin(angle),
+                       tx:n.x, ty:n.y, nIdx:n.idx, stuck:false });
+  });
+}
+
+// assemble contributions for all elements touching node n
+function assembleNode(n){
+  highlightCells = [];  // reset highlights
+  elements.forEach((el, ei) => {
+    if(el.includes(n)){
+      // dummy ke: (ei+1)*0.1 matrix
+      let ke = Array(6).fill().map(_=>Array(6).fill((ei+1)*0.1));
+      let I = [];
+      el.forEach(nd => I.push(2*nd, 2*nd+1));   // global DOF indices
+      for(let i=0;i<6;i++) for(let j=0;j<6;j++){
+        let r = I[i], c = I[j];
+        K_global[r][c] += ke[i][j];
+        highlightCells.push({r,c});             // mark for highlight
+      }
+    }
+  });
+}
+
+// render top-left 10×10 of K_global, highlighting recent updates
+function drawMatrix(){
+  const offX=500, offY=50, cell=18;
+  textSize(10); textAlign(RIGHT, CENTER);      // text align :contentReference[oaicite:10]{index=10}
+  for(let r=0; r<10; r++){
+    for(let c=0; c<10; c++){
+      // highlight if in highlightCells
+      if(highlightCells.some(h=>h.r===r && h.c===c)){
+        fill(50,150,50); rect(offX+c*cell-14, offY+r*cell-10, cell, cell);
+      }
+      fill(255);
+      let v = K_global[r][c].toFixed(1);
+      text(v, offX + c*cell, offY + r*cell);
+    }
+  }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+// ————————————————————————————————————————————————
+// 10×10 Matrix Assembly with Arrow-Keys, Bullets & Highlights
+// ————————————————————————————————————————————————
+
+const DOF = 2;                                // ✅ Scalar: DOF per node
+let n_nodes;                                  // ✅ Scalar: total nodes
+let node_coords = [], elements = [];          // 📌 Vectors: node positions & element connectivity
+let K_global;                                 // 🧮 Matrix: global stiffness
+let nodeSprites = [], projectiles = [];       // 📌 Vectors: nodes & bullets
+let highlightCells = [];                      // 📌 Vector of {r,c} to highlight
+let carriageX = 250;                          // ✅ Scalar: gun X position
+
+function setup() {
+  createCanvas(900, 450);                     // create canvas :contentReference[oaicite:5]{index=5}
+  // build 5×5 grid => 25 nodes => 2*n_nodes=50 DOF, but display only top-left 10×10
+  const cols=5, rows=5;
+  n_nodes = cols * rows;
+  for(let y=0; y<rows; y++){
+    for(let x=0; x<cols; x++){
+      let px=80 + x*60, py=50 + y*60;
+      node_coords.push([px,py]);
+      nodeSprites.push({x:px, y:py, idx: node_coords.length-1});
+    }
+  }
+  // each square → two triangles (total 2*(cols-1)*(rows-1)=32 elements)
+  for(let y=0; y<rows-1; y++){
+    for(let x=0; x<cols-1; x++){
+      let n1=y*cols+x, n2=n1+1, n3=n1+cols, n4=n3+1;
+      elements.push([n1,n2,n3], [n2,n4,n3]);
+    }
+  }
+  // initialize 2n×2n global matrix to zero
+  K_global = Array(2*n_nodes).fill().map(_=>Array(2*n_nodes).fill(0));
+}
+
+function draw() {
+  background(30);
+  
+  // draw nodes
+  fill(200); noStroke();
+  nodeSprites.forEach(n => ellipse(n.x, n.y, 8));              
+  
+  // draw carriage at carriageX :contentReference[oaicite:6]{index=6}
+  push();
+    translate(carriageX, 380);
+    fill(80); stroke(180);
+    rect(-40,0,80,20);
+    rect(-20,-30,40,30);
+    for(let i=0;i<4;i++) rect(-20+i*10,-50,6,35);
+  pop();
+  
+  // update & draw bullets
+  projectiles.forEach(p => {
+    if(!p.stuck){
+      p.x += p.vx; p.y += p.vy;
+      if(dist(p.x,p.y, p.tx,p.ty) < 5){              // collision check :contentReference[oaicite:7]{index=7}
+        p.stuck = true; p.vx = p.vy = 0;
+        assembleNode(p.nIdx);
+      }
+    }
+    fill(p.stuck ? [255,100,0] : [255,200,0]);
+    noStroke(); ellipse(p.x,p.y,8);
+  });
+  
+  // draw 10×10 block of K_global with highlights
+  drawMatrix();
+}
+
+function keyPressed() {
+  if(keyCode === LEFT_ARROW)  carriageX = max(80, carriageX - 10);  // move gun left :contentReference[oaicite:8]{index=8}
+  if(keyCode === RIGHT_ARROW) carriageX = min(420, carriageX + 10); // move gun right :contentReference[oaicite:9]{index=9}
+}
+
+// fire bullets at all nodes
+function mousePressed() {
+  projectiles = [];
+  nodeSprites.forEach(n => {
+    let angle = atan2(n.y-380, n.x-carriageX);
+    projectiles.push({ x:carriageX, y:380, vx:5*cos(angle), vy:5*sin(angle),
+                       tx:n.x, ty:n.y, nIdx:n.idx, stuck:false });
+  });
+}
+
+// assemble contributions for all elements touching node n
+function assembleNode(n){
+  highlightCells = [];  // reset highlights
+  elements.forEach((el, ei) => {
+    if(el.includes(n)){
+      // dummy ke: (ei+1)*0.1 matrix
+      let ke = Array(6).fill().map(_=>Array(6).fill((ei+1)*0.1));
+      let I = [];
+      el.forEach(nd => I.push(2*nd, 2*nd+1));   // global DOF indices
+      for(let i=0;i<6;i++) for(let j=0;j<6;j++){
+        let r = I[i], c = I[j];
+        K_global[r][c] += ke[i][j];
+        highlightCells.push({r,c});             // mark for highlight
+      }
+    }
+  });
+}
+
+// render top-left 10×10 of K_global, highlighting recent updates
+function drawMatrix(){
+  const offX=500, offY=50, cell=18;
+  textSize(10); textAlign(RIGHT, CENTER);      // text align :contentReference[oaicite:10]{index=10}
+  for(let r=0; r<10; r++){
+    for(let c=0; c<10; c++){
+      // highlight if in highlightCells
+      if(highlightCells.some(h=>h.r===r && h.c===c)){
+        fill(50,150,50); rect(offX+c*cell-14, offY+r*cell-10, cell, cell);
+      }
+      fill(255);
+      let v = K_global[r][c].toFixed(1);
+      text(v, offX + c*cell, offY + r*cell);
+    }
+  }
+}
+
+
+
+
+
+
+
+
+
+
+
+// 2D CST FEM p5.js Simulation with Separate Barrel Aim, GST & Force Vector Export
+const DOF = 2;
+let n_nodes;
+let node_coords = [], elements = [];
+let nodeSprites = [], projectiles = [];
+let K_global, F_global;
+let carriageX = 250, barrelAngle = 0;
+
+function setup() {
+  createCanvas(900, 450);
+  // build grid and elements (5×5 grid => 32 triangles)
+  const cols=5, rows=5;
+  n_nodes = cols * rows;
+  for(let y=0; y<rows; y++) for(let x=0; x<cols; x++) {
+    let px=80 + x*60, py=50 + y*60;
+    node_coords.push([px,py]); nodeSprites.push({x:px,y:py,idx:node_coords.length-1});
+  }
+  for(let y=0; y<rows-1; y++) for(let x=0; x<cols-1; x++) {
+    let n1=y*cols+x, n2=n1+1, n3=n1+cols, n4=n3+1;
+    elements.push([n1,n2,n3],[n2,n4,n3]);
+  }
+  K_global = Array(2*n_nodes).fill().map(_=>Array(2*n_nodes).fill(0));
+  F_global = Array(2*n_nodes).fill(0);
+}
+
+function draw() {
+  background(30);
+  // draw nodes
+  fill(200); noStroke(); nodeSprites.forEach(n=>ellipse(n.x,n.y,8));
+
+  // draw barrel separate from carriage
+  push(); translate(carriageX,380);
+    rotate(barrelAngle);
+    // barrel tube
+    fill(80); stroke(180);
+    rect(0,-5,60,10);
+    // carriage
+    resetMatrix(); translate(carriageX,380);
+    rect(-40,0,80,20);
+    rect(-20,-30,40,30);
+  pop();
+
+  // update & draw bullets
+  projectiles.forEach(p=>{
+    if(!p.stuck) {
+      p.x+=p.vx; p.y+=p.vy;
+      barrelAngle = atan2(p.ty-380, p.tx-carriageX);
+      if(dist(p.x,p.y,p.tx,p.ty)<5){ p.stuck=true; p.vx=p.vy=0; assembleNode(p.nIdx); }
+    }
+    fill(p.stuck?[255,100,0]:[255,200,0]); noStroke(); ellipse(p.x,p.y,8);
+  });
+
+  drawMatrix();
+}
+
+function keyPressed() {
+  if(keyCode===LEFT_ARROW) carriageX=max(80,carriageX-10);
+  if(keyCode===RIGHT_ARROW) carriageX=min(420,carriageX+10);
+  if(key==='e' || key==='E') exportData();
+}
+
+function mousePressed() {
+  projectiles=[];
+  nodeSprites.forEach(n=>{
+    let angle=atan2(n.y-380,n.x-carriageX);
+    projectiles.push({x:carriageX,y:380,vx:5*cos(angle),vy:5*sin(angle),tx:n.x,ty:n.y,nIdx:n.idx,stuck:false});
+  });
+}
+
+function assembleNode(n) {
+  elements.forEach((el,ei)=>{
+    if(el.includes(n)){
+      let ke=Array(6).fill().map(_=>Array(6).fill((ei+1)*0.1));
+      let fe=Array(6).fill((ei+1)*1.0); // dummy element force vector
+      let I=[]; el.forEach(nd=>I.push(2*nd,2*nd+1));
+      for(let i=0;i<6;i++){
+        F_global[I[i]]+=fe[i];
+        for(let j=0;j<6;j++){
+          K_global[I[i]][I[j]]+=ke[i][j];
+        }
+      }
+      // store element matrix export
+      console.log(`Element ${ei} ke:`, ke, `fe:`, fe);
+    }
+  });
+}
+
+function drawMatrix() {
+  const offX=500, offY=50, cell=18;
+  textSize(10); textAlign(RIGHT, CENTER);
+  fill(255);
+  for(let r=0; r<10; r++) for(let c=0; c<10; c++)
+    text(K_global[r][c].toFixed(1), offX+c*cell, offY+r*cell);
+  // draw force vector first 10 entries
+  textAlign(LEFT, CENTER);
+  for(let i=0;i<10;i++) text(F_global[i].toFixed(1), offX+10*cell+10, offY+i*cell);
+}
+
+function exportData() {
+  console.log('K_global:',K_global);
+  console.log('F_global:',F_global);
+}
+
+
+
+// 2D CST FEM p5.js Simulation with Separate Barrel Aim, GST & Force Vector Export
+const DOF = 2;
+let n_nodes;
+let node_coords = [], elements = [];
+let nodeSprites = [], projectiles = [];
+let K_global, F_global;
+let carriageX = 250, barrelAngle = 0;
+
+function setup() {
+  createCanvas(900, 450);
+  // build grid and elements (5×5 grid => 32 triangles)
+  const cols=5, rows=5;
+  n_nodes = cols * rows;
+  for(let y=0; y<rows; y++) for(let x=0; x<cols; x++) {
+    let px=80 + x*60, py=50 + y*60;
+    node_coords.push([px,py]); nodeSprites.push({x:px,y:py,idx:node_coords.length-1});
+  }
+  for(let y=0; y<rows-1; y++) for(let x=0; x<cols-1; x++) {
+    let n1=y*cols+x, n2=n1+1, n3=n1+cols, n4=n3+1;
+    elements.push([n1,n2,n3],[n2,n4,n3]);
+  }
+  K_global = Array(2*n_nodes).fill().map(_=>Array(2*n_nodes).fill(0));
+  F_global = Array(2*n_nodes).fill(0);
+}
+
+function draw() {
+  background(30);
+  // draw nodes
+  fill(200); noStroke(); nodeSprites.forEach(n=>ellipse(n.x,n.y,8));
+
+  // draw barrel separate from carriage
+  push(); translate(carriageX,380);
+    rotate(barrelAngle);
+    // barrel tube
+    fill(80); stroke(180);
+    rect(0,-5,60,10);
+    // carriage
+    resetMatrix(); translate(carriageX,380);
+    rect(-40,0,80,20);
+    rect(-20,-30,40,30);
+  pop();
+
+  // update & draw bullets
+  projectiles.forEach(p=>{
+    if(!p.stuck) {
+      p.x+=p.vx; p.y+=p.vy;
+      barrelAngle = atan2(p.ty-380, p.tx-carriageX);
+      if(dist(p.x,p.y,p.tx,p.ty)<5){ p.stuck=true; p.vx=p.vy=0; assembleNode(p.nIdx); }
+    }
+    fill(p.stuck?[255,100,0]:[255,200,0]); noStroke(); ellipse(p.x,p.y,8);
+  });
+
+  drawMatrix();
+}
+
+function keyPressed() {
+  if(keyCode===LEFT_ARROW) carriageX=max(80,carriageX-10);
+  if(keyCode===RIGHT_ARROW) carriageX=min(420,carriageX+10);
+  if(key==='e' || key==='E') exportData();
+}
+
+function mousePressed() {
+  projectiles=[];
+  nodeSprites.forEach(n=>{
+    let angle=atan2(n.y-380,n.x-carriageX);
+    projectiles.push({x:carriageX,y:380,vx:5*cos(angle),vy:5*sin(angle),tx:n.x,ty:n.y,nIdx:n.idx,stuck:false});
+  });
+}
+
+function assembleNode(n) {
+  elements.forEach((el,ei)=>{
+    if(el.includes(n)){
+      let ke=Array(6).fill().map(_=>Array(6).fill((ei+1)*0.1));
+      let fe=Array(6).fill((ei+1)*1.0); // dummy element force vector
+      let I=[]; el.forEach(nd=>I.push(2*nd,2*nd+1));
+      for(let i=0;i<6;i++){
+        F_global[I[i]]+=fe[i];
+        for(let j=0;j<6;j++){
+          K_global[I[i]][I[j]]+=ke[i][j];
+        }
+      }
+      // store element matrix export
+      console.log(`Element ${ei} ke:`, ke, `fe:`, fe);
+    }
+  });
+}
+
+function drawMatrix() {
+  const offX=500, offY=50, cell=18;
+  textSize(10); textAlign(RIGHT, CENTER);
+  fill(255);
+  for(let r=0; r<10; r++) for(let c=0; c<10; c++)
+    text(K_global[r][c].toFixed(1), offX+c*cell, offY+r*cell);
+  // draw force vector first 10 entries
+  textAlign(LEFT, CENTER);
+  for(let i=0;i<10;i++) text(F_global[i].toFixed(1), offX+10*cell+10, offY+i*cell);
+}
+
+function exportData() {
+  console.log('K_global:',K_global);
+  console.log('F_global:',F_global);
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+// ——————————————————————————————————————————
+// Export GST & Force Vector as CSV in p5.js
+// ——————————————————————————————————————————
+
+let K_global, F_global;
+let n_nodes = 25;               // example
+// (Assume your node/elements setup & assembly logic here…)
+
+function setup() {
+  createCanvas(900, 450);
+  // initialize global matrices
+  K_global = Array(2*n_nodes).fill().map(_=>Array(2*n_nodes).fill(0));
+  F_global = Array(2*n_nodes).fill(0);
+}
+
+// call this whenever you want to export CSVs:
+function exportCSVs() {
+  // 1) Build p5.Table for K_global
+  let tableK = new p5.Table();
+  // add header row (optional)
+  let header = tableK.addRow();
+  for (let c=0; c<2*n_nodes; c++) header.setString(c, `c${c}`);
+  // fill rows
+  for (let r=0; r<2*n_nodes; r++) {
+    let row = tableK.addRow();
+    for (let c=0; c<2*n_nodes; c++) {
+      row.setNum(c, K_global[r][c]);
+    }
+  }
+  // trigger download of K_global.csv
+  saveTable(tableK, 'K_global.csv');            // CSV by default :contentReference[oaicite:7]{index=7}
+
+  // 2) Build CSV for F_global via saveStrings
+  let fLines = [];
+  for (let i=0; i< F_global.length; i++){
+    fLines.push(F_global[i].toString());
+  }
+  saveStrings(fLines, 'F_global.csv');           // one value per line :contentReference[oaicite:8]{index=8}
+}
+
+// Example: press 'E' to export after assembly
+function keyPressed() {
+  if (key === 'E' || key === 'e') {
+    exportCSVs();
+  }
+}
+
+
+
+
+
+
+
+// 2D CST FEM p5.js Simulation with Separate Barrel Aim, GST & Force Vector Export
+const DOF = 2;
+let n_nodes;
+let node_coords = [], elements = [];
+let nodeSprites = [], projectiles = [];
+let K_global, F_global;
+let carriageX = 250, barrelAngle = 0;
+
+function setup() {
+  createCanvas(900, 450);
+  // build grid and elements (5×5 grid => 32 triangles)
+  const cols=5, rows=5;
+  n_nodes = cols * rows;
+  for(let y=0; y<rows; y++) for(let x=0; x<cols; x++) {
+    let px=80 + x*60, py=50 + y*60;
+    node_coords.push([px,py]); nodeSprites.push({x:px,y:py,idx:node_coords.length-1});
+  }
+  for(let y=0; y<rows-1; y++) for(let x=0; x<cols-1; x++) {
+    let n1=y*cols+x, n2=n1+1, n3=n1+cols, n4=n3+1;
+    elements.push([n1,n2,n3],[n2,n4,n3]);
+  }
+  K_global = Array(2*n_nodes).fill().map(_=>Array(2*n_nodes).fill(0));
+  F_global = Array(2*n_nodes).fill(0);
+}
+
+function draw() {
+  background(30);
+  // draw nodes
+  fill(200); noStroke(); nodeSprites.forEach(n=>ellipse(n.x,n.y,8));
+
+  // draw barrel separate from carriage
+  push(); translate(carriageX,380);
+    rotate(barrelAngle);
+    // barrel tube
+    fill(80); stroke(180);
+    rect(0,-5,60,10);
+    // carriage
+    resetMatrix(); translate(carriageX,380);
+    rect(-40,0,80,20);
+    rect(-20,-30,40,30);
+  pop();
+
+  // update & draw bullets
+  projectiles.forEach(p=>{
+    if(!p.stuck) {
+      p.x+=p.vx; p.y+=p.vy;
+      barrelAngle = atan2(p.ty-380, p.tx-carriageX);
+      if(dist(p.x,p.y,p.tx,p.ty)<5){ p.stuck=true; p.vx=p.vy=0; assembleNode(p.nIdx); }
+    }
+    fill(p.stuck?[255,100,0]:[255,200,0]); noStroke(); ellipse(p.x,p.y,8);
+  });
+
+  drawMatrix();
+}
+
+function keyPressed() {
+  if(keyCode===LEFT_ARROW) carriageX=max(80,carriageX-10);
+  if(keyCode===RIGHT_ARROW) carriageX=min(420,carriageX+10);
+  if(key==='e' || key==='E') exportData();
+}
+
+function mousePressed() {
+  projectiles=[];
+  nodeSprites.forEach(n=>{
+    let angle=atan2(n.y-380,n.x-carriageX);
+    projectiles.push({x:carriageX,y:380,vx:5*cos(angle),vy:5*sin(angle),tx:n.x,ty:n.y,nIdx:n.idx,stuck:false});
+  });
+}
+
+function assembleNode(n) {
+  elements.forEach((el,ei)=>{
+    if(el.includes(n)){
+      let ke=Array(6).fill().map(_=>Array(6).fill((ei+1)*0.1));
+      let fe=Array(6).fill((ei+1)*1.0); // dummy element force vector
+      let I=[]; el.forEach(nd=>I.push(2*nd,2*nd+1));
+      for(let i=0;i<6;i++){
+        F_global[I[i]]+=fe[i];
+        for(let j=0;j<6;j++){
+          K_global[I[i]][I[j]]+=ke[i][j];
+        }
+      }
+      // store element matrix export
+      console.log(`Element ${ei} ke:`, ke, `fe:`, fe);
+    }
+  });
+}
+
+function drawMatrix() {
+  const offX=500, offY=50, cell=18;
+  textSize(10); textAlign(RIGHT, CENTER);
+  fill(255);
+  for(let r=0; r<10; r++) for(let c=0; c<10; c++)
+    text(K_global[r][c].toFixed(1), offX+c*cell, offY+r*cell);
+  // draw force vector first 10 entries
+  textAlign(LEFT, CENTER);
+  for(let i=0;i<10;i++) text(F_global[i].toFixed(1), offX+10*cell+10, offY+i*cell);
+}
+
+function exportData() {
+  console.log('K_global:',K_global);
+  console.log('F_global:',F_global);
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+// ——————————————————————————————————————————
+// Export GST & Force Vector as CSV in p5.js
+// ——————————————————————————————————————————
+
+let K_global, F_global;
+let n_nodes = 25;               // example
+// (Assume your node/elements setup & assembly logic here…)
+
+function setup() {
+  createCanvas(900, 450);
+  // initialize global matrices
+  K_global = Array(2*n_nodes).fill().map(_=>Array(2*n_nodes).fill(0));
+  F_global = Array(2*n_nodes).fill(0);
+}
+
+// call this whenever you want to export CSVs:
+function exportCSVs() {
+  // 1) Build p5.Table for K_global
+  let tableK = new p5.Table();
+  // add header row (optional)
+  let header = tableK.addRow();
+  for (let c=0; c<2*n_nodes; c++) header.setString(c, `c${c}`);
+  // fill rows
+  for (let r=0; r<2*n_nodes; r++) {
+    let row = tableK.addRow();
+    for (let c=0; c<2*n_nodes; c++) {
+      row.setNum(c, K_global[r][c]);
+    }
+  }
+  // trigger download of K_global.csv
+  saveTable(tableK, 'K_global.csv');            // CSV by default :contentReference[oaicite:7]{index=7}
+
+  // 2) Build CSV for F_global via saveStrings
+  let fLines = [];
+  for (let i=0; i< F_global.length; i++){
+    fLines.push(F_global[i].toString());
+  }
+  saveStrings(fLines, 'F_global.csv');           // one value per line :contentReference[oaicite:8]{index=8}
+}
+
+// Example: press 'E' to export after assembly
+function keyPressed() {
+  if (key === 'E' || key === 'e') {
+    exportCSVs();
+  }
+}
+
+
+
+
+// 2D CST FEM p5.js Simulation with Separate Barrel Aim, GST & Force Vector Export
+const DOF = 2;
+let n_nodes;
+let node_coords = [], elements = [];
+let nodeSprites = [], projectiles = [];
+let K_global, F_global;
+let carriageX = 250, barrelAngle = 0;
+
+function setup() {
+  createCanvas(900, 450);
+  // build grid and elements (5×5 grid => 32 triangles)
+  const cols=5, rows=5;
+  n_nodes = cols * rows;
+  for(let y=0; y<rows; y++) for(let x=0; x<cols; x++) {
+    let px=80 + x*60, py=50 + y*60;
+    node_coords.push([px,py]); nodeSprites.push({x:px,y:py,idx:node_coords.length-1});
+  }
+  for(let y=0; y<rows-1; y++) for(let x=0; x<cols-1; x++) {
+    let n1=y*cols+x, n2=n1+1, n3=n1+cols, n4=n3+1;
+    elements.push([n1,n2,n3],[n2,n4,n3]);
+  }
+  K_global = Array(2*n_nodes).fill().map(_=>Array(2*n_nodes).fill(0));
+  F_global = Array(2*n_nodes).fill(0);
+}
+
+function draw() {
+  background(30);
+  // draw nodes
+  fill(200); noStroke(); nodeSprites.forEach(n=>ellipse(n.x,n.y,8));
+
+  // draw barrel separate from carriage
+  push(); translate(carriageX,380);
+    rotate(barrelAngle);
+    // barrel tube
+    fill(80); stroke(180);
+    rect(0,-5,60,10);
+    // carriage
+    resetMatrix(); translate(carriageX,380);
+    rect(-40,0,80,20);
+    rect(-20,-30,40,30);
+  pop();
+
+  // update & draw bullets
+  projectiles.forEach(p=>{
+    if(!p.stuck) {
+      p.x+=p.vx; p.y+=p.vy;
+      barrelAngle = atan2(p.ty-380, p.tx-carriageX);
+      if(dist(p.x,p.y,p.tx,p.ty)<5){ p.stuck=true; p.vx=p.vy=0; assembleNode(p.nIdx); }
+    }
+    fill(p.stuck?[255,100,0]:[255,200,0]); noStroke(); ellipse(p.x,p.y,8);
+  });
+
+  drawMatrix();
+}
+
+function keyPressed() {
+  if(keyCode===LEFT_ARROW) carriageX=max(80,carriageX-10);
+  if(keyCode===RIGHT_ARROW) carriageX=min(420,carriageX+10);
+  if(key==='e' || key==='E') exportData();
+}
+
+function mousePressed() {
+  projectiles=[];
+  nodeSprites.forEach(n=>{
+    let angle=atan2(n.y-380,n.x-carriageX);
+    projectiles.push({x:carriageX,y:380,vx:5*cos(angle),vy:5*sin(angle),tx:n.x,ty:n.y,nIdx:n.idx,stuck:false});
+  });
+}
+
+function assembleNode(n) {
+  elements.forEach((el,ei)=>{
+    if(el.includes(n)){
+      let ke=Array(6).fill().map(_=>Array(6).fill((ei+1)*0.1));
+      let fe=Array(6).fill((ei+1)*1.0); // dummy element force vector
+      let I=[]; el.forEach(nd=>I.push(2*nd,2*nd+1));
+      for(let i=0;i<6;i++){
+        F_global[I[i]]+=fe[i];
+        for(let j=0;j<6;j++){
+          K_global[I[i]][I[j]]+=ke[i][j];
+        }
+      }
+      // store element matrix export
+      console.log(`Element ${ei} ke:`, ke, `fe:`, fe);
+    }
+  });
+}
+
+function drawMatrix() {
+  const offX=500, offY=50, cell=18;
+  textSize(10); textAlign(RIGHT, CENTER);
+  fill(255);
+  for(let r=0; r<10; r++) for(let c=0; c<10; c++)
+    text(K_global[r][c].toFixed(1), offX+c*cell, offY+r*cell);
+  // draw force vector first 10 entries
+  textAlign(LEFT, CENTER);
+  for(let i=0;i<10;i++) text(F_global[i].toFixed(1), offX+10*cell+10, offY+i*cell);
+}
+
+function exportData() {
+  console.log('K_global:',K_global);
+  console.log('F_global:',F_global);
+}
+
+
+
+
+
+
+// 2D CST FEM p5.js Simulation with Barrel Aim, CST Assembly, and Stress-Strain Plot
+let DOF = 2;
+let node_coords = [], elements = [], nodeSprites = [], projectiles = [];
+let K_global, F_global;
+let carriageX = 250, barrelAngle = 0;
+let stressStrainData = [], D;
+let gridSlider;
+
+function setup() {
+  createCanvas(900, 500);
+  gridSlider = createSlider(2, 10, 5, 1);
+  gridSlider.position(20, 20);
+  setupMaterial();
+  buildGrid(gridSlider.value());
+}
+
+function setupMaterial() {
+  const E = 210e9, nu = 0.3;
+  D = [
+    [1, nu, 0],
+    [nu, 1, 0],
+    [0, 0, (1 - nu) / 2]
+  ].map(row => row.map(v => v * E / (1 - nu * nu)));
+}
+
+function buildGrid(n) {
+  node_coords = []; elements = []; nodeSprites = []; stressStrainData = [];
+  let cols = n, rows = n;
+  let idx = 0;
+  for (let y = 0; y < rows; y++) {
+    for (let x = 0; x < cols; x++) {
+      let px = 80 + x * 50, py = 60 + y * 50;
+      node_coords.push([px, py]);
+      nodeSprites.push({ x: px, y: py, idx: idx++ });
+    }
+  }
+  for (let y = 0; y < rows - 1; y++) {
+    for (let x = 0; x < cols - 1; x++) {
+      let n1 = y * cols + x, n2 = n1 + 1, n3 = n1 + cols, n4 = n3 + 1;
+      elements.push([n1, n2, n3], [n2, n4, n3]);
+    }
+  }
+  let n_nodes = cols * rows;
+  K_global = Array(2 * n_nodes).fill().map(_ => Array(2 * n_nodes).fill(0));
+  F_global = Array(2 * n_nodes).fill(0);
+}
+
+function draw() {
+  background(30);
+  fill(255); text("Grid: " + gridSlider.value() + "x" + gridSlider.value(), 160, 25);
+  if (gridSlider.value() ** 2 !== nodeSprites.length) buildGrid(gridSlider.value());
+
+  fill(200); noStroke(); nodeSprites.forEach(n => ellipse(n.x, n.y, 8));
+  drawCarriage();
+  updateProjectiles();
+  drawMatrix();
+  plotStressStrain();
+}
+
+function drawCarriage() {
+  push();
+  translate(carriageX, 420);
+  rotate(barrelAngle);
+  fill(80); stroke(180);
+  rect(0, -5, 60, 10);
+  resetMatrix();
+  translate(carriageX, 420);
+  rect(-40, 0, 80, 20);
+  rect(-20, -30, 40, 30);
+  pop();
+}
+
+function updateProjectiles() {
+  projectiles.forEach(p => {
+    if (!p.stuck) {
+      p.x += p.vx; p.y += p.vy;
+      barrelAngle = atan2(p.ty - 420, p.tx - carriageX);
+      if (dist(p.x, p.y, p.tx, p.ty) < 5) {
+        p.stuck = true;
+        p.vx = p.vy = 0;
+        assembleNode(p.nIdx);
+      }
+    }
+    fill(p.stuck ? [255, 100, 0] : [255, 200, 0]);
+    noStroke();
+    ellipse(p.x, p.y, 8);
+  });
+}
+
+function keyPressed() {
+  if (keyCode === LEFT_ARROW) carriageX = max(80, carriageX - 10);
+  if (keyCode === RIGHT_ARROW) carriageX = min(width - 80, carriageX + 10);
+  if (key === 'e' || key === 'E') exportData();
+}
+
+function mousePressed() {
+  projectiles = [];
+  nodeSprites.forEach(n => {
+    let angle = atan2(n.y - 420, n.x - carriageX);
+    projectiles.push({ x: carriageX, y: 420, vx: 5 * cos(angle), vy: 5 * sin(angle), tx: n.x, ty: n.y, nIdx: n.idx, stuck: false });
+  });
+}
+
+function assembleNode(n) {
+  elements.forEach((el, ei) => {
+    if (el.includes(n)) {
+      let I = [];
+      el.forEach(nd => I.push(2 * nd, 2 * nd + 1));
+
+      // Dummy nodal displacement vector (for visualization purposes only)
+      let u = I.map(i => F_global[i] * 0.001);
+
+      let coords = el.map(i => node_coords[i]);
+      let [x1, y1] = coords[0], [x2, y2] = coords[1], [x3, y3] = coords[2];
+      let B = getBMatrix(x1, y1, x2, y2, x3, y3);
+
+      let strain = multiplyMatrixVector(B, u);
+      let stress = multiplyMatrixVector(D, strain);
+      let dispMag = Math.sqrt(u.reduce((acc, val) => acc + val * val, 0));
+
+      stressStrainData.push({ ei, strain, stress, dispMag });
+
+      // Create dummy element stiffness matrix and force vector
+      let ke = Array(6).fill().map(_ => Array(6).fill((ei + 1) * 0.1));
+      let fe = Array(6).fill((ei + 1) * 1.0);
+
+      for (let i = 0; i < 6; i++) {
+        F_global[I[i]] += fe[i];
+        for (let j = 0; j < 6; j++) {
+          K_global[I[i]][I[j]] += ke[i][j];
+        }
+      }
+      console.log(`Element ${ei} ke:`, ke, `fe:`, fe);
+    }
+  });
+}
+
+function getBMatrix(x1, y1, x2, y2, x3, y3) {
+  let A = 0.5 * ((x2 - x1) * (y3 - y1) - (x3 - x1) * (y2 - y1));
+  let b = [y2 - y3, y3 - y1, y1 - y2];
+  let c = [x3 - x2, x1 - x3, x2 - x1];
+  return [
+    [b[0], 0, b[1], 0, b[2], 0],
+    [0, c[0], 0, c[1], 0, c[2]],
+    [c[0], b[0], c[1], b[1], c[2], b[2]]
+  ].map(row => row.map(val => val / (2 * A)));
+}
+
+function multiplyMatrixVector(mat, vec) {
+  return mat.map(row => row.reduce((sum, val, idx) => sum + val * vec[idx], 0));
+}
+
+function drawMatrix() {
+  const offX = 520, offY = 50, cell = 16;
+  fill(255); textSize(10); textAlign(RIGHT, CENTER);
+  for (let r = 0; r < 10; r++) for (let c = 0; c < 10; c++)
+    text(K_global[r][c].toFixed(1), offX + c * cell, offY + r * cell);
+  textAlign(LEFT, CENTER);
+  for (let i = 0; i < 10; i++) text(F_global[i].toFixed(1), offX + 10 * cell + 10, offY + i * cell);
+}
+
+function plotStressStrain() {
+  const x0 = 500, y0 = 420, w = 350, h = 70;
+  fill(255); text("Stress & Strain (x10^6 Pa) vs Element", x0, y0 - 10);
+  noFill(); stroke(100, 255, 100); beginShape();
+  stressStrainData.forEach((d, i) => vertex(x0 + i * 8, y0 - d.stress[0] / 1e6));
+  endShape();
+  stroke(255, 100, 100); beginShape();
+  stressStrainData.forEach((d, i) => vertex(x0 + i * 8, y0 - d.strain[0] * 1e6));
+  endShape();
+}
+
+function exportData() {
+  console.log('K_global:', K_global);
+  console.log('F_global:', F_global);
+}
+
+
+
