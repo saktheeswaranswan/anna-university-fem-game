@@ -1,0 +1,155 @@
+const DOF = 2;
+let n_nodes;
+let node_coords = [], elements = [];
+let nodeSprites = [], projectiles = [];
+let K_global, F_global;
+let carriageX = 250, barrelAngle = 0;
+let assemblyAnimations = [];
+
+function setup() {
+  createCanvas(900, 450);
+  const cols = 5, rows = 5;
+  n_nodes = cols * rows;
+  for (let y = 0; y < rows; y++) {
+    for (let x = 0; x < cols; x++) {
+      let px = 80 + x * 60, py = 50 + y * 60;
+      node_coords.push([px, py]);
+      nodeSprites.push({ x: px, y: py, idx: node_coords.length - 1 });
+    }
+  }
+  for (let y = 0; y < rows - 1; y++) {
+    for (let x = 0; x < cols - 1; x++) {
+      let n1 = y * cols + x, n2 = n1 + 1, n3 = n1 + cols, n4 = n3 + 1;
+      elements.push([n1, n2, n3], [n2, n4, n3]);
+    }
+  }
+  K_global = Array(2 * n_nodes).fill().map(() => Array(2 * n_nodes).fill(0));
+  F_global = Array(2 * n_nodes).fill(0);
+}
+
+function draw() {
+  background(30);
+  fill(200); noStroke();
+  nodeSprites.forEach(n => ellipse(n.x, n.y, 8));
+
+  push();
+  translate(carriageX, 380);
+  rotate(barrelAngle);
+  fill(80); stroke(180);
+  rect(0, -5, 60, 10);
+  resetMatrix();
+  translate(carriageX, 380);
+  rect(-40, 0, 80, 20);
+  rect(-20, -30, 40, 30);
+  pop();
+
+  projectiles.forEach(p => {
+    if (!p.stuck) {
+      p.x += p.vx; p.y += p.vy;
+      barrelAngle = atan2(p.ty - 380, p.tx - carriageX);
+      if (dist(p.x, p.y, p.tx, p.ty) < 5) {
+        p.stuck = true; p.vx = p.vy = 0;
+        assembleNode(p.nIdx);
+      }
+    }
+    fill(p.stuck ? [255, 100, 0] : [255, 200, 0]); noStroke();
+    ellipse(p.x, p.y, 8);
+  });
+
+  updateAnimations();
+  drawMatrix();
+}
+
+function keyPressed() {
+  if (keyCode === LEFT_ARROW) carriageX = max(80, carriageX - 10);
+  if (keyCode === RIGHT_ARROW) carriageX = min(420, carriageX + 10);
+  if (key === 'e' || key === 'E') exportData();
+}
+
+function mousePressed() {
+  projectiles = [];
+  nodeSprites.forEach(n => {
+    let angle = atan2(n.y - 380, n.x - carriageX);
+    projectiles.push({
+      x: carriageX,
+      y: 380,
+      vx: 5 * cos(angle),
+      vy: 5 * sin(angle),
+      tx: n.x,
+      ty: n.y,
+      nIdx: n.idx,
+      stuck: false
+    });
+  });
+}
+
+function assembleNode(n) {
+  elements.forEach((el, ei) => {
+    if (el.includes(n)) {
+      let ke = Array(6).fill().map(() => Array(6).fill((ei + 1) * 0.1));
+      let fe = Array(6).fill((ei + 1) * 1.0);
+      let I = [];
+      el.forEach(nd => I.push(2 * nd, 2 * nd + 1));
+      for (let i = 0; i < 6; i++) {
+        F_global[I[i]] += fe[i];
+        assemblyAnimations.push({
+          type: 'F',
+          index: I[i],
+          value: F_global[I[i]],
+          progress: 0
+        });
+        for (let j = 0; j < 6; j++) {
+          K_global[I[i]][I[j]] += ke[i][j];
+          assemblyAnimations.push({
+            type: 'K',
+            row: I[i],
+            col: I[j],
+            value: K_global[I[i]][I[j]],
+            progress: 0
+          });
+        }
+      }
+      console.log(`Element ${ei} ke:`, ke, `fe:`, fe);
+    }
+  });
+}
+
+function updateAnimations() {
+  assemblyAnimations.forEach(anim => {
+    anim.progress += 0.02;
+  });
+  assemblyAnimations = assemblyAnimations.filter(anim => anim.progress < 1);
+}
+
+function drawMatrix() {
+  const offX = 500, offY = 50, cell = 18;
+  textSize(10); textAlign(RIGHT, CENTER);
+  for (let r = 0; r < 10; r++) {
+    for (let c = 0; c < 10; c++) {
+      let val = K_global[r][c].toFixed(1);
+      let anim = assemblyAnimations.find(a => a.type === 'K' && a.row === r && a.col === c);
+      if (anim) {
+        fill(lerpColor(color(255, 255, 0), color(255), anim.progress));
+      } else {
+        fill(255);
+      }
+      text(val, offX + c * cell, offY + r * cell);
+    }
+  }
+  textAlign(LEFT, CENTER);
+  for (let i = 0; i < 10; i++) {
+    let val = F_global[i].toFixed(1);
+    let anim = assemblyAnimations.find(a => a.type === 'F' && a.index === i);
+    if (anim) {
+      fill(lerpColor(color(255, 255, 0), color(255), anim.progress));
+    } else {
+      fill(255);
+    }
+    text(val, offX + 10 * cell + 10, offY + i * cell);
+  }
+}
+
+function exportData() {
+  console.log('K_global:', K_global);
+  console.log('F_global:', F_global);
+}
